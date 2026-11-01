@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Deliverd interceptor for Amazon Bedrock AgentCore Gateway. Every MCP tool call
+  the gateway governs is checked with your Deliverd policy before the target sees it.
+  After deploying, attach the function to your gateway with the InterceptorConfiguration output.
+
+Parameters:
+  DeliverdApiKey:
+    Type: String
+    NoEcho: true
+    Description: A Deliverd agent key with gates:write and gates:execute. Stored in Secrets Manager.
+  GatewayName:
+    Type: String
+    Default: agentcore
+    Description: How the gateway is named on approvals and in the audit trail.
+  Mode:
+    Type: String
+    Default: writes
+    Description: '"writes" (tools whose name says they change something), "all", or a regular expression over target___tool names.'
+  LogOnly:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: '"true" records each decision and lets every call through, to try a policy before enforcing it.'
+  DeliverdApiUrl:
+    Type: String
+    Default: https://deliverd.dev
+  GatewayRoleName:
+    Type: String
+    Default: ""
+    Description: Optional. The gateway's service role, to be given permission to invoke the function.
+
+Conditions:
+  HasGatewayRole: !Not [!Equals [!Ref GatewayRoleName, ""]]
+
+Resources:
+  DeliverdKey:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Deliverd agent key for the AgentCore interceptor
+      SecretString: !Ref DeliverdApiKey
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-deliverd-key
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DeliverdKey
+
+  Function:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub deliverd-agentcore-interceptor-${AWS::StackName}
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt FunctionRole.Arn
+      Timeout: 15
+      MemorySize: 256
+      Environment:
+        Variables:
+          DELIVERD_API_KEY_SECRET_ARN: !Ref DeliverdKey
+          DELIVERD_API_URL: !Ref DeliverdApiUrl
+          DELIVERD_GATEWAY_NAME: !Ref GatewayName
+          DELIVERD_MODE: !Ref Mode
+          DELIVERD_LOG_ONLY: !Ref LogOnly
+      Code:
+        # Replaced by `npm run package` / the README's zip step; inline code cannot import a sibling file.
+        ZipFile: |
+          exports.handler = async () => { throw new Error("Deploy interceptor.mjs as index.mjs: see the README."); };
+
+  GatewayInvoke:
+    Type: AWS::IAM::Policy
+    Condition: HasGatewayRole
+    Properties:
+      PolicyName: invoke-deliverd-interceptor
+      Roles: [!Ref GatewayRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource: !GetAtt Function.Arn
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt Function.Arn
+  InterceptorConfiguration:
+    Description: Pass to `aws bedrock-agentcore-control update-gateway --interceptor-configurations`.
+    Value: !Sub '[{"interceptor":{"lambda":{"arn":"${Function.Arn}"}},"interceptionPoints":["REQUEST"],"inputConfiguration":{"passRequestHeaders":true}}]'
