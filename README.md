@@ -34,7 +34,7 @@ What happens to a `tools/call`:
    DELIVERD_API_KEY=dlv_… node register.mjs
    ```
 
-   Then, under **Admin → Publishing & request rules**, say what
+   Then, under **Agents → Rules → Publishing & request rules**, say what
    `agentcore.tool_call` needs. Until a rule says otherwise, a person decides.
 3. Deploy the stack, then put the interceptor's code in it:
 

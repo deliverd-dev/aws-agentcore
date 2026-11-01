@@ -22,7 +22,7 @@ async function main() {
   if (!process.env.DELIVERD_API_KEY) throw new Error("Set DELIVERD_API_KEY to an owner's or administrator's key with actions:write.");
   const body = actionBody(process.env.DELIVERD_ACTION_ID || ACTION_ID);
   await api(process.env, "POST", "/actions", body);
-  console.log(`Registered ${body.actionId}. Now say what it needs under Admin → Publishing & request rules: allowed, refused, or a person decides.`);
+  console.log(`Registered ${body.actionId}. Now say what it needs under Agents → Rules → Publishing & request rules: allowed, refused, or a person decides.`);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
